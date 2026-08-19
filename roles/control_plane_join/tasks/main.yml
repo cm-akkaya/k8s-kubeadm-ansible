@@ -1,0 +1,39 @@
+---
+- name: Join additional control plane
+  block:
+    - name: Create control plane join configuration
+      ansible.builtin.template:
+        src: join-control-plane.yaml.j2
+        dest: /etc/kubeadm-join-control-plane.yaml
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Join control plane
+      ansible.builtin.command:
+        cmd: kubeadm join --config /etc/kubeadm-join-control-plane.yaml
+        creates: /etc/kubernetes/admin.conf
+
+  always:
+    - name: Remove temporary join configuration
+      ansible.builtin.file:
+        path: /etc/kubeadm-join-control-plane.yaml
+        state: absent
+
+- name: Create k8sadmin kubeconfig directory
+  ansible.builtin.file:
+    path: /home/k8sadmin/.kube
+    state: directory
+    owner: k8sadmin
+    group: k8sadmin
+    mode: "0700"
+
+- name: Install admin kubeconfig for k8sadmin
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/k8sadmin/.kube/config
+    remote_src: true
+    owner: k8sadmin
+    group: k8sadmin
+    mode: "0600"

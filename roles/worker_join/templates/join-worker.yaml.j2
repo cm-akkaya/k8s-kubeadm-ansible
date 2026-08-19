@@ -1,0 +1,16 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: JoinConfiguration
+
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: "{{ api_fqdn }}:{{ api_port }}"
+    token: "{{ hostvars[primary_control_plane]['kubeadm_join_token'] }}"
+    caCertHashes:
+      - "{{ hostvars[primary_control_plane]['kubeadm_ca_cert_hash'] }}"
+
+nodeRegistration:
+  name: "{{ inventory_hostname }}"
+  criSocket: "{{ cri_socket }}"
+  kubeletExtraArgs:
+    - name: node-ip
+      value: "{{ k8s_node_ip }}"

@@ -1,0 +1,58 @@
+---
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Read configured timezone
+  ansible.builtin.command:
+    cmd: timedatectl show --property=Timezone --value
+  register: current_timezone
+  changed_when: false
+
+- name: Set timezone
+  ansible.builtin.command:
+    cmd: "timedatectl set-timezone {{ timezone }}"
+  when: current_timezone.stdout != timezone
+
+- name: Manage Kubernetes hosts entries
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE KUBERNETES LAB"
+    block: |
+      {{ api_vip }} {{ api_fqdn }} k8s-api
+      {% for host in groups['control_plane'] %}
+      {{ hostvars[host]['ansible_host'] }} {{ host }}
+      {% endfor %}
+      {% for host in groups['workers'] %}
+      {{ hostvars[host]['ansible_host'] }} {{ host }}
+      {% endfor %}
+      {% for host in groups['load_balancers'] %}
+      {{ hostvars[host]['ansible_host'] }} {{ host }}
+      {% endfor %}
+
+- name: Generate cluster.env
+  ansible.builtin.template:
+    src: cluster.env.j2
+    dest: /root/cluster.env
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Generate node.env
+  ansible.builtin.template:
+    src: node.env.j2
+    dest: /root/node.env
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install common required packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gpg
+      - python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600      

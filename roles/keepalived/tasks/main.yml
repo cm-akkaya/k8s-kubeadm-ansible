@@ -1,0 +1,26 @@
+---
+- name: Install Keepalived
+  ansible.builtin.apt:
+    name:
+      - keepalived
+      - procps
+    state: present
+    update_cache: true
+
+- name: Configure Keepalived
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart Keepalived
+
+- name: Enable Keepalived
+  ansible.builtin.service:
+    name: keepalived
+    state: started
+    enabled: true
+
+- name: Apply Keepalived changes
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,31 @@
+---
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+    update_cache: true
+
+- name: Configure HAProxy
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/haproxy -c -f %s"
+  notify: Restart HAProxy
+
+- name: Enable HAProxy
+  ansible.builtin.service:
+    name: haproxy
+    state: started
+    enabled: true
+
+- name: Force HAProxy handler
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify HAProxy listener
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ api_port }}"
+    timeout: 30

@@ -1,0 +1,49 @@
+---
+- name: Common configuration
+  hosts: all
+  become: true
+  roles:
+    - common
+    - os_hardening
+
+- name: Configure Kubernetes API load balancers
+  hosts: load_balancers
+  become: true
+  roles:
+    - haproxy
+    - keepalived
+
+- name: Prepare Kubernetes nodes
+  hosts: kubernetes
+  become: true
+  roles:
+    - k8s_prerequisites
+    - containerd
+    - kubernetes_packages
+
+- name: Initialize primary control plane
+  hosts: "{{ primary_control_plane }}"
+  become: true
+  roles:
+    - kubeadm_init
+    - cilium
+
+- name: Join additional control planes
+  hosts: control_plane
+  serial: 1
+  become: true
+  roles:
+    - role: control_plane_join
+      when: inventory_hostname != primary_control_plane
+
+- name: Join worker nodes
+  hosts: workers
+  become: true
+  roles:
+    - worker_join
+
+- name: Validate cluster
+  hosts: "{{ primary_control_plane }}"
+  become: true
+  roles:
+    - post_checks

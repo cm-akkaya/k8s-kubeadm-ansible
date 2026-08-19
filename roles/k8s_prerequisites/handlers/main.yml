@@ -1,0 +1,7 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for roles/k8s_prerequisites
+
+- name: Reload Kubernetes sysctl
+  ansible.builtin.command:
+    cmd: sysctl --system

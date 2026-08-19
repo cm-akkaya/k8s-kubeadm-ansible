@@ -1,0 +1,50 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Ansible temporary files
+*.retry
+*.log
+*.facts
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secret files
+.env
+*.env
+vault-password*
+.vault_pass*
+*.secret
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Kubernetes credentials
+admin.conf
+*.kubeconfig
+
+# Temporary directories
+tmp/
+temp/
+.cache/

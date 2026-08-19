@@ -1,0 +1,9 @@
+---
+cri_socket: "unix:///run/containerd/containerd.sock"
+
+kube_proxy_mode: "nftables"
+
+cilium_ipam_mode: "kubernetes"
+cilium_routing_mode: "tunnel"
+cilium_tunnel_protocol: "vxlan"
+cilium_kube_proxy_replacement: false

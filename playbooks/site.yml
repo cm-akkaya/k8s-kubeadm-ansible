@@ -1,0 +1,67 @@
+---
+- import_playbook: preflight.yml
+
+- name: Common configuration and hardening
+  hosts: all
+  gather_facts: true
+  roles:
+    - common
+    - os_hardening
+
+- name: Prepare Kubernetes nodes
+  hosts: kubernetes
+  gather_facts: true
+  roles:
+    - k8s_prerequisites
+    - containerd
+    - kubernetes_packages
+
+- name: Configure API load balancers
+  hosts: load_balancers
+  gather_facts: true
+  roles:
+    - haproxy
+    - keepalived
+
+- name: Initialize primary control plane
+  hosts: control_plane
+  gather_facts: true
+  tasks:
+    - name: Initialize cluster
+      ansible.builtin.include_role:
+        name: kubeadm_init
+      when: inventory_hostname == primary_control_plane
+
+- name: Join remaining control plane nodes
+  hosts: control_plane
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Join additional control plane
+      ansible.builtin.include_role:
+        name: control_plane_join
+      when: inventory_hostname != primary_control_plane
+
+- name: Install Cilium
+  hosts: control_plane
+  gather_facts: true
+  tasks:
+    - name: Install Cilium on primary control plane
+      ansible.builtin.include_role:
+        name: cilium
+      when: inventory_hostname == primary_control_plane
+
+- name: Join workers
+  hosts: workers
+  gather_facts: true
+  roles:
+    - worker_join
+
+- name: Validate completed cluster
+  hosts: control_plane
+  gather_facts: false
+  tasks:
+    - name: Run post checks
+      ansible.builtin.include_role:
+        name: post_checks
+      when: inventory_hostname == primary_control_plane

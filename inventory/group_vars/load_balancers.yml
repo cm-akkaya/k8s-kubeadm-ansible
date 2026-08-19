@@ -1,0 +1,4 @@
+---
+keepalived_virtual_router_id: 51
+
+keepalived_auth_pass: "K8sVIP01"

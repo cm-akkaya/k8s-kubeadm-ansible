@@ -1,0 +1,49 @@
+---
+- name: Reset worker nodes
+  hosts: workers
+  gather_facts: true
+  become: true
+  roles:
+    - kubeadm_reset
+
+- name: Reset secondary control plane nodes
+  hosts: control_plane
+  gather_facts: true
+  become: true
+  serial: 1
+
+  tasks:
+    - name: Reset secondary control plane
+      ansible.builtin.include_role:
+        name: kubeadm_reset
+      when: inventory_hostname != primary_control_plane
+
+- name: Reset primary control plane
+  hosts: control_plane
+  gather_facts: true
+  become: true
+  serial: 1
+
+  tasks:
+    - name: Reset primary control plane
+      ansible.builtin.include_role:
+        name: kubeadm_reset
+      when: inventory_hostname == primary_control_plane
+
+- name: Stop old Kubernetes API VIP
+  hosts: load_balancers
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Stop Keepalived
+      ansible.builtin.service:
+        name: keepalived
+        state: stopped
+      failed_when: false
+
+    - name: Stop HAProxy
+      ansible.builtin.service:
+        name: haproxy
+        state: stopped
+      failed_when: false

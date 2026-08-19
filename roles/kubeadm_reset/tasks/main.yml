@@ -1,0 +1,90 @@
+---
+- name: Reset kubeadm node
+  ansible.builtin.command:
+    cmd: >-
+      kubeadm reset
+      --force
+      --cleanup-tmp-dir
+      --cri-socket {{ cri_socket }}
+
+- name: Stop and disable kubelet after reset
+  ansible.builtin.service:
+    name: kubelet
+    state: stopped
+    enabled: false
+
+- name: Check Cilium cgroup v2 mount
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -rn
+      - -M
+      - /run/cilium/cgroupv2
+  register: cilium_cgroup_mount
+  changed_when: false
+  failed_when: false
+
+- name: Unmount Cilium cgroup v2 filesystem
+  ansible.builtin.command:
+    argv:
+      - umount
+      - /run/cilium/cgroupv2
+  when: cilium_cgroup_mount.rc == 0
+  changed_when: true      
+
+- name: Remove old Kubernetes and CNI state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/kubernetes
+    - /etc/cni/net.d
+    - /var/lib/cni
+    - /var/lib/etcd
+    - /var/lib/cilium
+    - /root/.kube
+    - /home/k8sadmin/.kube
+    - /etc/crictl.yaml
+    - /etc/kubernetes-kubeadm-init.yaml
+    - /etc/kubeadm-join-control-plane.yaml
+    - /etc/kubeadm-join-worker.yaml
+    - /root/cluster.env
+    - /root/node.env
+
+- name: Remove Cilium runtime state
+  ansible.builtin.file:
+    path: /run/cilium
+    state: absent      
+      
+- name: Remove old Cilium CNI binary
+  ansible.builtin.file:
+    path: /opt/cni/bin/cilium-cni
+    state: absent
+
+- name: Remove Cilium network interfaces
+  ansible.builtin.command:
+    cmd: "ip link delete {{ item }}"
+  loop:
+    - cilium_host
+    - cilium_net
+    - cilium_vxlan
+  failed_when: false
+  changed_when: false
+
+- name: Reboot Kubernetes node
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+
+- name: Check for residual CNI configuration files
+  ansible.builtin.find:
+    paths: /etc/cni/net.d
+    file_type: file
+    recurse: false
+  register: residual_cni_configs
+
+- name: Verify CNI configuration is clean
+  ansible.builtin.assert:
+    that:
+      - residual_cni_configs.matched == 0
+    fail_msg: "Residual CNI configuration files still exist in /etc/cni/net.d"
+    success_msg: "CNI configuration is clean"      

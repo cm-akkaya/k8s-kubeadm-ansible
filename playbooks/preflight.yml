@@ -1,0 +1,52 @@
+---
+- name: Kubernetes cluster preflight
+  hosts: all
+  gather_facts: true
+
+  tasks:
+    - name: Verify Ubuntu version
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == "Ubuntu"
+          - ansible_facts['distribution_version'] is version('24.04', '==')
+        fail_msg: "Bu lab Ubuntu 24.04 için hazırlanmıştır."
+
+    - name: Verify inventory IP exists on node
+      ansible.builtin.assert:
+        that:
+          - ansible_host is defined
+          - ansible_host in ansible_facts['all_ipv4_addresses']
+        fail_msg: "{{ ansible_host }} bu node üzerinde bulunamadı."
+
+    - name: Verify automatically detected interface
+      ansible.builtin.assert:
+        that:
+          - k8s_interface in ansible_facts['interfaces']
+        fail_msg: "Default Kubernetes interface bulunamadı."
+
+    - name: Show detected node information
+      ansible.builtin.debug:
+        msg:
+          - "Hostname   : {{ inventory_hostname }}"
+          - "IP         : {{ k8s_node_ip }}"
+          - "Interface  : {{ k8s_interface }}"
+          - "Groups     : {{ group_names }}"
+
+    - name: Verify cluster topology
+      ansible.builtin.assert:
+        that:
+          - groups['control_plane'] | length == 3
+          - groups['workers'] | length == 3
+          - groups['load_balancers'] | length == 2
+          - primary_control_plane == groups['control_plane'][0]
+        fail_msg: "Topoloji 3 CP + 3 Worker + 2 LB olmalıdır."
+      run_once: true
+
+    - name: Verify version variables
+      ansible.builtin.assert:
+        that:
+          - kubernetes_minor_version is match('^v[0-9]+\\.[0-9]+$')
+          - kubernetes_version is match('^v[0-9]+\\.[0-9]+\\.[0-9]+$')
+          - kubernetes_package_version | length > 0
+          - cilium_version is match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+      run_once: true

@@ -1,0 +1,64 @@
+---
+- name: Remove legacy Helm repository definitions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/helm.list
+    - /etc/apt/sources.list.d/helm-stable-debian.list
+
+- name: Configure Helm repository
+  ansible.builtin.deb822_repository:
+    name: helm
+    types:
+      - deb
+    uris:
+      - https://packages.buildkite.com/helm-linux/helm-debian/any/
+    suites:
+      - any
+    components:
+      - main
+    signed_by: https://packages.buildkite.com/helm-linux/helm-debian/gpgkey
+    state: present
+
+- name: Update apt cache after Helm repository configuration
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install Helm
+  ansible.builtin.apt:
+    name: helm
+    state: present
+
+- name: Configure Cilium Helm repository
+  ansible.builtin.command:
+    cmd: helm repo add cilium https://helm.cilium.io/ --force-update
+  changed_when: false
+
+- name: Install Cilium
+  ansible.builtin.command:
+    argv:
+      - helm
+      - upgrade
+      - --install
+      - cilium
+      - cilium/cilium
+      - --version
+      - "{{ cilium_version }}"
+      - --namespace
+      - kube-system
+      - --set
+      - "ipam.mode={{ cilium_ipam_mode }}"
+      - --set
+      - "routingMode={{ cilium_routing_mode }}"
+      - --set
+      - "tunnelProtocol={{ cilium_tunnel_protocol }}"
+      - --set
+      - "kubeProxyReplacement={{ cilium_kube_proxy_replacement | lower }}"
+      - --set
+      - "operator.replicas=2"
+      - --wait
+      - --timeout
+      - 10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

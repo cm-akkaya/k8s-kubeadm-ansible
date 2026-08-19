@@ -1,0 +1,17 @@
+---
+- name: Validate SSH
+  ansible.builtin.command:
+    cmd: /usr/sbin/sshd -t
+  changed_when: false
+  listen: Reload SSH
+
+- name: Reload SSH service
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+  listen: Reload SSH
+
+- name: Reload sysctl
+  ansible.builtin.command:
+    cmd: sysctl --system
+  listen: Reload sysctl
