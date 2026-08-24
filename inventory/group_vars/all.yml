@@ -1,13 +1,13 @@
 ---
-ansible_user: k8sadmin
+ansible_user: platform
 ansible_become: true
 ansible_become_method: sudo
 ansible_python_interpreter: /usr/bin/python3
 
-cluster_name: "kubeadm-lab"
+cluster_name: "kaya-k8s"
 
-api_fqdn: "api.k8s.lab.test"
-api_vip: "172.17.160.120"
+api_fqdn: "api.k8s.kaya.test"
+api_vip: "172.17.160.200"
 api_port: 6443
 vip_prefix: 24
 
@@ -16,13 +16,16 @@ service_cidr: "172.21.0.0/16"
 
 timezone: "Europe/Istanbul"
 
-kubernetes_minor_version: "v1.35"
-kubernetes_version: "v1.35.7"
-kubernetes_package_version: "1.35.7-1.1"
+kubernetes_minor_version: "v1.36"
+kubernetes_version: "v1.36.2"
+kubernetes_package_version: "1.36.4-1.1"
 
-containerd_package_version: "2.2.1-1~ubuntu.24.04~noble"  
+containerd_package_version: "2.3.3-1~ubuntu.24.04~noble"
 
 cilium_version: "1.20.0"
+
+haproxy_ppa_version: "3.2"
+keepalived_version: "1:2.2.8-1build2"
 
 primary_control_plane: "{{ groups['control_plane'] | first }}"
 
