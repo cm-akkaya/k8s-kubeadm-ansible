@@ -17,7 +17,7 @@ service_cidr: "172.21.0.0/16"
 timezone: "Europe/Istanbul"
 
 kubernetes_minor_version: "v1.36"
-kubernetes_version: "v1.36.2"
+kubernetes_version: "v1.36.4"
 kubernetes_package_version: "1.36.4-1.1"
 
 containerd_package_version: "2.3.3-1~ubuntu.24.04~noble"
