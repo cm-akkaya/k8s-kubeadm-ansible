@@ -32,6 +32,12 @@
     allow_downgrade: true
     allow_change_held_packages: true
     update_cache: true
+    
+- name: Install cri-tools
+  ansible.builtin.apt:
+    name: "cri-tools"
+    state: present
+    update_cache: true    
 
 - name: Configure crictl
   ansible.builtin.template:
@@ -49,6 +55,7 @@
     - kubelet
     - kubeadm
     - kubectl
+    - cri-tools
 
 - name: Enable kubelet
   ansible.builtin.service:

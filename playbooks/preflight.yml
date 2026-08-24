@@ -35,11 +35,15 @@
     - name: Verify cluster topology
       ansible.builtin.assert:
         that:
-          - groups['control_plane'] | length == 3
-          - groups['workers'] | length == 3
+          - groups['control_plane'] | length >= 1
+          - groups['control_plane'] | length is odd
+          - groups['workers'] | length >= 1
           - groups['load_balancers'] | length == 2
           - primary_control_plane == groups['control_plane'][0]
-        fail_msg: "Topoloji 3 CP + 3 Worker + 2 LB olmalıdır."
+        fail_msg: >-
+          Topoloji hatası: control-plane sayısı tek olmalı (stacked etcd quorum
+          gereksinimi), en az 1 worker olmalı, load balancer sayısı tam olarak
+          2 olmalıdır (Keepalived unicast VRRP çifti).
       run_once: true
 
     - name: Verify version variables

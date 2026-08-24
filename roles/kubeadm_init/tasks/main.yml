@@ -17,21 +17,21 @@
     cmd: kubeadm init --config /etc/kubernetes-kubeadm-init.yaml
     creates: /etc/kubernetes/admin.conf
 
-- name: Create k8sadmin kubeconfig directory
+- name: Create platform kubeconfig directory
   ansible.builtin.file:
-    path: /home/k8sadmin/.kube
+    path: /home/platform/.kube
     state: directory
-    owner: k8sadmin
-    group: k8sadmin
+    owner: platform
+    group: platform
     mode: "0700"
 
-- name: Install kubeconfig for k8sadmin
+- name: Install kubeconfig for platform
   ansible.builtin.copy:
     src: /etc/kubernetes/admin.conf
-    dest: /home/k8sadmin/.kube/config
+    dest: /home/platform/.kube/config
     remote_src: true
-    owner: k8sadmin
-    group: k8sadmin
+    owner: platform
+    group: platform
     mode: "0600"
 
 - name: Generate fresh join command

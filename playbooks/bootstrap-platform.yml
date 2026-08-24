@@ -1,0 +1,53 @@
+---
+# Bu playbook idempotenttir:
+#   - platform kullanıcısı yoksa oluşturur, varsa dokunmadan geçer (state: present)
+#   - platform-k8s-deploy public key'i authorized_keys'e ekler (zaten varsa tekrar eklemez)
+#   - /etc/sudoers.d/platform dosyasını her çalıştırmada üretir/doğrular (NOPASSWD sudo garanti altına alınır)
+#
+# İlk çalıştırma öncesi controller'da ~/.ssh/platform-k8s-deploy(.pub) anahtar çiftinin
+# üretilmiş ve mevcut (zaten güvenilen) bir anahtarla en az bir node'a dağıtılabiliyor
+# olması gerekir (bkz. README Bölüm 3.3 / scripts/generate-and-distribute-deploy-key.sh).
+
+- name: Ensure platform user, sudo and dedicated deploy key are configured
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars:
+    controller_deploy_public_key: >-
+      {{ lookup('ansible.builtin.file',
+      lookup('ansible.builtin.env', 'HOME') + '/.ssh/platform-k8s-deploy.pub') }}
+
+  tasks:
+    - name: Ensure platform user exists
+      ansible.builtin.user:
+        name: platform
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Ensure SSH directory exists
+      ansible.builtin.file:
+        path: /home/platform/.ssh
+        state: directory
+        owner: platform
+        group: platform
+        mode: "0700"
+
+    - name: Install platform-k8s-deploy public key
+      ansible.posix.authorized_key:
+        user: platform
+        key: "{{ controller_deploy_public_key }}"
+        state: present
+        comment: "platform-k8s-deploy (Ansible controller)"
+
+    - name: Configure passwordless sudo for platform
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/platform
+        content: "platform ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"

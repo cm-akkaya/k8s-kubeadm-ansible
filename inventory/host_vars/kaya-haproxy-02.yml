@@ -1,0 +1,4 @@
+---
+keepalived_state: "BACKUP"
+keepalived_priority: 100
+keepalived_peer_host: "kaya-haproxy-01"

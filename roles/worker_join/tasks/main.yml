@@ -20,3 +20,11 @@
       ansible.builtin.file:
         path: /etc/kubeadm-join-worker.yaml
         state: absent
+
+- name: Label worker node
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig=/etc/kubernetes/admin.conf
+      label node {{ inventory_hostname }} node-role.kubernetes.io/worker= --overwrite
+  delegate_to: "{{ primary_control_plane }}"
+  changed_when: true

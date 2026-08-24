@@ -1,0 +1,4 @@
+---
+keepalived_state: "MASTER"
+keepalived_priority: 110
+keepalived_peer_host: "kaya-haproxy-02"

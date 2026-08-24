@@ -30,7 +30,7 @@
       - umount
       - /run/cilium/cgroupv2
   when: cilium_cgroup_mount.rc == 0
-  changed_when: true      
+  changed_when: true
 
 - name: Remove old Kubernetes and CNI state
   ansible.builtin.file:
@@ -43,7 +43,7 @@
     - /var/lib/etcd
     - /var/lib/cilium
     - /root/.kube
-    - /home/k8sadmin/.kube
+    - /home/platform/.kube
     - /etc/crictl.yaml
     - /etc/kubernetes-kubeadm-init.yaml
     - /etc/kubeadm-join-control-plane.yaml
@@ -54,8 +54,8 @@
 - name: Remove Cilium runtime state
   ansible.builtin.file:
     path: /run/cilium
-    state: absent      
-      
+    state: absent
+
 - name: Remove old Cilium CNI binary
   ansible.builtin.file:
     path: /opt/cni/bin/cilium-cni
@@ -87,4 +87,4 @@
     that:
       - residual_cni_configs.matched == 0
     fail_msg: "Residual CNI configuration files still exist in /etc/cni/net.d"
-    success_msg: "CNI configuration is clean"      
+    success_msg: "CNI configuration is clean"

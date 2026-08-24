@@ -2,7 +2,7 @@
 - name: Install Keepalived
   ansible.builtin.apt:
     name:
-      - keepalived
+      - "keepalived={{ keepalived_version }}"
       - procps
     state: present
     update_cache: true

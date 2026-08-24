@@ -1,4 +1,16 @@
 ---
+- name: Install PPA prerequisites
+  ansible.builtin.apt:
+    name: software-properties-common
+    state: present
+    update_cache: true
+
+- name: Add HAProxy official PPA (Vincent Bernat)
+  ansible.builtin.apt_repository:
+    repo: "ppa:vbernat/haproxy-{{ haproxy_ppa_version }}"
+    state: present
+    update_cache: true
+
 - name: Install HAProxy
   ansible.builtin.apt:
     name: haproxy
