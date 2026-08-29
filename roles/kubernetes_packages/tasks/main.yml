@@ -10,13 +10,14 @@
     types:
       - deb
     uris:
-      - "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/"
+      - "http://{{ apt_cache_k8s_virtual_host }}/"
     suites:
       - "/"
     architectures:
       - amd64
     signed_by: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/Release.key"
     state: present
+  tags: [cache_infra]
 
 - name: Update apt cache after Kubernetes repository configuration
   ansible.builtin.apt:
@@ -32,12 +33,12 @@
     allow_downgrade: true
     allow_change_held_packages: true
     update_cache: true
-    
+
 - name: Install cri-tools
   ansible.builtin.apt:
     name: "cri-tools"
     state: present
-    update_cache: true    
+    update_cache: true
 
 - name: Configure crictl
   ansible.builtin.template:

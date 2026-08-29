@@ -12,3 +12,6 @@ disabled_plugins = []
 
 [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
   SystemdCgroup = true
+
+[plugins.'io.containerd.cri.v1.images'.registry]
+  config_path = '/etc/containerd/certs.d'

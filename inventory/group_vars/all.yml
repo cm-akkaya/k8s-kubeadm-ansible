@@ -25,9 +25,23 @@ containerd_package_version: "2.3.3-1~ubuntu.24.04~noble"
 cilium_version: "1.20.0"
 
 haproxy_ppa_version: "3.2"
+haproxy_version: "3.2.22-1ppa1~noble"
 keepalived_version: "1:2.2.8-1build2"
 
 primary_control_plane: "{{ groups['control_plane'] | first }}"
 
 k8s_node_ip: "{{ ansible_host }}"
 k8s_interface: "{{ ansible_facts['default_ipv4']['interface'] }}"
+
+apt_cache_server_ip: "172.17.160.234"
+apt_cache_port: 3142
+
+registry_mirror_k8s_port: 5000
+registry_mirror_quay_port: 5001
+
+cilium_chart_controller_path: "/opt/charts/cilium-{{ cilium_version }}.tgz"
+cilium_chart_remote_path: "/tmp/cilium-{{ cilium_version }}.tgz"
+
+apt_cache_k8s_virtual_host: "k8s-repo.internal"
+apt_cache_docker_virtual_host: "docker-repo.internal"
+apt_cache_helm_virtual_host: "helm-repo.internal"

@@ -10,13 +10,13 @@
     path: /etc/apt/sources.list.d/docker.list
     state: absent
 
-- name: Configure Docker repository
+- name: Configure Docker repository (via apt-cacher-ng HTTPS remap)
   ansible.builtin.deb822_repository:
     name: docker
     types:
       - deb
     uris:
-      - https://download.docker.com/linux/ubuntu
+      - "http://{{ apt_cache_docker_virtual_host }}/"
     suites:
       - "{{ ansible_facts['distribution_release'] }}"
     components:
@@ -25,6 +25,7 @@
       - amd64
     signed_by: https://download.docker.com/linux/ubuntu/gpg
     state: present
+  tags: [cache_infra]
 
 - name: Update apt cache after Docker repository configuration
   ansible.builtin.apt:
@@ -41,7 +42,7 @@
 - name: Hold containerd
   ansible.builtin.dpkg_selections:
     name: containerd.io
-    selection: hold      
+    selection: hold
 
 - name: Create containerd directory
   ansible.builtin.file:
@@ -57,6 +58,38 @@
     group: root
     mode: "0644"
   notify: Restart containerd
+
+- name: Create containerd registry certs.d directories
+  ansible.builtin.file:
+    path: "/etc/containerd/certs.d/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - registry.k8s.io
+    - quay.io
+  tags: [cache_infra]
+
+- name: Configure registry.k8s.io mirror
+  ansible.builtin.template:
+    src: registry-hosts.toml.j2
+    dest: /etc/containerd/certs.d/registry.k8s.io/hosts.toml
+    mode: "0644"
+  vars:
+    upstream_registry: registry.k8s.io
+    mirror_port: "{{ registry_mirror_k8s_port }}"
+  notify: Restart containerd
+  tags: [cache_infra]
+
+- name: Configure quay.io mirror
+  ansible.builtin.template:
+    src: registry-hosts.toml.j2
+    dest: /etc/containerd/certs.d/quay.io/hosts.toml
+    mode: "0644"
+  vars:
+    upstream_registry: quay.io
+    mirror_port: "{{ registry_mirror_quay_port }}"
+  notify: Restart containerd
+  tags: [cache_infra]
 
 - name: Enable containerd
   ansible.builtin.service:

@@ -1,0 +1,55 @@
+---
+- name: Warm apt-cacher-ng with currently pinned package versions
+  hosts: kubernetes:load_balancers
+  become: true
+
+  tasks:
+
+    - name: Refresh apt package lists
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Ensure warm-up scratch directory exists
+      ansible.builtin.file:
+        path: /tmp/apt-cache-warmup
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Force-download pinned Kubernetes packages through proxy
+      ansible.builtin.command:
+        cmd: >-
+          apt-get download
+          kubelet={{ kubernetes_package_version }}
+          kubeadm={{ kubernetes_package_version }}
+          kubectl={{ kubernetes_package_version }}
+      args:
+        chdir: /tmp/apt-cache-warmup
+      when: inventory_hostname in groups['kubernetes']
+      changed_when: true
+
+    - name: Force-download pinned containerd through proxy
+      ansible.builtin.command:
+        cmd: >-
+          apt-get download
+          containerd.io={{ containerd_package_version }}
+      args:
+        chdir: /tmp/apt-cache-warmup
+      when: inventory_hostname in groups['kubernetes']
+      changed_when: true
+
+    - name: Force-download pinned Keepalived through proxy
+      ansible.builtin.command:
+        cmd: >-
+          apt-get download
+          keepalived={{ keepalived_version }}
+      args:
+        chdir: /tmp/apt-cache-warmup
+      when: inventory_hostname in groups['load_balancers']
+      changed_when: true
+
+    - name: Clean up warm-up scratch directory
+      ansible.builtin.file:
+        path: /tmp/apt-cache-warmup
+        state: absent

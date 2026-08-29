@@ -1,0 +1,95 @@
+---
+- name: Install apt-cacher-ng
+  ansible.builtin.apt:
+    name: apt-cacher-ng
+    state: present
+    update_cache: true
+
+- name: Check for persistent data disk
+  ansible.builtin.stat:
+    path: /mnt/data01
+  register: data_disk
+
+- name: Persist cache under /mnt/data01 if available
+  ansible.builtin.file:
+    path: /mnt/data01/apt-cacher-ng
+    state: directory
+    owner: apt-cacher-ng
+    group: apt-cacher-ng
+    mode: "0755"
+  when: data_disk.stat.exists and data_disk.stat.isdir
+
+- name: Point apt-cacher-ng cache dir to persistent disk
+  ansible.builtin.lineinfile:
+    path: /etc/apt-cacher-ng/acng.conf
+    regexp: '^CacheDir:'
+    line: "CacheDir: /mnt/data01/apt-cacher-ng"
+  when: data_disk.stat.exists and data_disk.stat.isdir
+  notify: Restart apt-cacher-ng
+
+- name: Bind apt-cacher-ng to all interfaces
+  ansible.builtin.lineinfile:
+    path: /etc/apt-cacher-ng/acng.conf
+    regexp: '^BindAddress:'
+    line: "BindAddress: 0.0.0.0"
+  notify: Restart apt-cacher-ng
+
+- name: Allow HTTPS tunnel passthrough as safety net for uncovered repos
+  ansible.builtin.lineinfile:
+    path: /etc/apt-cacher-ng/acng.conf
+    regexp: '^PassThroughPattern:'
+    line: "PassThroughPattern: .*"
+  notify: Restart apt-cacher-ng
+
+- name: Define backend for Kubernetes packages repository (HTTPS caching)
+  ansible.builtin.copy:
+    dest: /etc/apt-cacher-ng/backends_k8s
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/
+  tags: [cache_infra]
+  notify: Restart apt-cacher-ng
+
+- name: Define backend for Docker/containerd repository (HTTPS caching)
+  ansible.builtin.copy:
+    dest: /etc/apt-cacher-ng/backends_docker
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      https://download.docker.com/linux/ubuntu
+  tags: [cache_infra]
+  notify: Restart apt-cacher-ng
+
+- name: Define backend for Helm (buildkite) repository (HTTPS caching)
+  ansible.builtin.copy:
+    dest: /etc/apt-cacher-ng/backends_helm
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      https://packages.buildkite.com/helm-linux/helm-debian/any/
+  tags: [cache_infra]
+  notify: Restart apt-cacher-ng
+
+- name: Configure Remap directives for HTTPS-only repositories
+  ansible.builtin.blockinfile:
+    path: /etc/apt-cacher-ng/acng.conf
+    marker: "# {mark} ANSIBLE MANAGED HTTPS REMAP RULES"
+    block: |
+      Remap-k8srepo: http://{{ apt_cache_k8s_virtual_host }} ; file:backends_k8s
+      Remap-dockerrepo: http://{{ apt_cache_docker_virtual_host }} ; file:backends_docker
+      Remap-helmrepo: http://{{ apt_cache_helm_virtual_host }} ; file:backends_helm
+  tags: [cache_infra]
+  notify: Restart apt-cacher-ng
+
+- name: Enable apt-cacher-ng
+  ansible.builtin.service:
+    name: apt-cacher-ng
+    state: started
+    enabled: true
+
+- name: Apply apt-cacher-ng configuration
+  ansible.builtin.meta: flush_handlers

@@ -5,15 +5,35 @@
     state: present
     update_cache: true
 
-- name: Add HAProxy official PPA (Vincent Bernat)
+- name: Install APT keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Vincent Bernat HAProxy PPA signing key
+  ansible.builtin.copy:
+    src: vbernat-haproxy.gpg
+    dest: /etc/apt/keyrings/vbernat-haproxy.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure HAProxy PPA repository
   ansible.builtin.apt_repository:
-    repo: "ppa:vbernat/haproxy-{{ haproxy_ppa_version }}"
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/vbernat-haproxy.gpg]
+      https://ppa.launchpadcontent.net/vbernat/haproxy-{{ haproxy_ppa_version }}/ubuntu
+      noble main
+    filename: vbernat-haproxy
     state: present
     update_cache: true
 
 - name: Install HAProxy
   ansible.builtin.apt:
-    name: haproxy
+    name: "haproxy={{ haproxy_version }}"
     state: present
     update_cache: true
 

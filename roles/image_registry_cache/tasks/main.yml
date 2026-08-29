@@ -1,0 +1,96 @@
+---
+- name: Install Docker Engine (to run mirror containers)
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+    update_cache: true
+
+- name: Enable Docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Check for persistent data disk
+  ansible.builtin.stat:
+    path: /mnt/data01
+  register: data_disk
+
+- name: Set registry data base path
+  ansible.builtin.set_fact:
+    registry_data_base: "{{ '/mnt/data01/registry-mirror' if (data_disk.stat.exists and data_disk.stat.isdir) else '/var/lib/registry-mirror' }}"
+
+- name: Create registry data directories
+  ansible.builtin.file:
+    path: "{{ registry_data_base }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - k8s
+    - quay
+
+# --- registry.k8s.io mirror ---
+
+- name: Check registry-mirror-k8s container existence
+  ansible.builtin.command:
+    cmd: docker ps -aq -f "name=^registry-mirror-k8s$"
+  register: k8s_mirror_exists
+  changed_when: false
+
+- name: Check registry-mirror-k8s container running state
+  ansible.builtin.command:
+    cmd: docker ps -q -f "name=^registry-mirror-k8s$"
+  register: k8s_mirror_running
+  changed_when: false
+
+- name: Start existing but stopped registry-mirror-k8s container
+  ansible.builtin.command:
+    cmd: docker start registry-mirror-k8s
+  when:
+    - k8s_mirror_exists.stdout | length > 0
+    - k8s_mirror_running.stdout | length == 0
+
+- name: Run registry.k8s.io pull-through mirror
+  ansible.builtin.command:
+    cmd: >-
+      docker run -d
+      --name registry-mirror-k8s
+      --restart always
+      -p {{ registry_mirror_k8s_port }}:5000
+      -v {{ registry_data_base }}/k8s:/var/lib/registry
+      -e REGISTRY_PROXY_REMOTEURL=https://registry.k8s.io
+      registry:2
+  when: k8s_mirror_exists.stdout | length == 0
+
+# --- quay.io mirror ---
+
+- name: Check registry-mirror-quay container existence
+  ansible.builtin.command:
+    cmd: docker ps -aq -f "name=^registry-mirror-quay$"
+  register: quay_mirror_exists
+  changed_when: false
+
+- name: Check registry-mirror-quay container running state
+  ansible.builtin.command:
+    cmd: docker ps -q -f "name=^registry-mirror-quay$"
+  register: quay_mirror_running
+  changed_when: false
+
+- name: Start existing but stopped registry-mirror-quay container
+  ansible.builtin.command:
+    cmd: docker start registry-mirror-quay
+  when:
+    - quay_mirror_exists.stdout | length > 0
+    - quay_mirror_running.stdout | length == 0
+
+- name: Run quay.io pull-through mirror
+  ansible.builtin.command:
+    cmd: >-
+      docker run -d
+      --name registry-mirror-quay
+      --restart always
+      -p {{ registry_mirror_quay_port }}:5000
+      -v {{ registry_data_base }}/quay:/var/lib/registry
+      -e REGISTRY_PROXY_REMOTEURL=https://quay.io
+      registry:2
+  when: quay_mirror_exists.stdout | length == 0

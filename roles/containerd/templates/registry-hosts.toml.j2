@@ -1,0 +1,4 @@
+server = "https://{{ upstream_registry }}"
+
+[host."http://{{ apt_cache_server_ip }}:{{ mirror_port }}"]
+  capabilities = ["pull", "resolve"]

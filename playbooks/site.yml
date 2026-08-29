@@ -1,6 +1,24 @@
 ---
 - import_playbook: preflight.yml
 
+- name: Configure package/image caching infrastructure
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  tags: [cache_infra]
+  roles:
+    - apt_cache_server
+    - image_registry_cache
+
+- name: Configure apt proxy on all cluster nodes
+  hosts: kubernetes:load_balancers
+  gather_facts: false
+  become: true
+  tags: [cache_infra]
+  roles:
+    - apt_cache_client
+
 - name: Common configuration and hardening
   hosts: all
   gather_facts: true
