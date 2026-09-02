@@ -42,6 +42,7 @@ declare -A NODES=(
   [kaya-worker-03]=172.17.160.188
   [kaya-worker-04]=172.17.160.189
   [kaya-worker-05]=172.17.160.190
+  [kaya-worker-06]=172.17.160.203
   [kaya-haproxy-01]=172.17.160.201
   [kaya-haproxy-02]=172.17.160.202
 )

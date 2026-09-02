@@ -1,0 +1,40 @@
+---
+- name: Install hardening packages
+  ansible.builtin.apt:
+    name:
+      - auditd
+      - apparmor
+      - apparmor-utils
+      - chrony
+    state: present
+    update_cache: true
+
+- name: Enable auditd
+  ansible.builtin.service:
+    name: auditd
+    state: started
+    enabled: true
+
+- name: Enable chrony
+  ansible.builtin.service:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Deploy SSH hardening
+  ansible.builtin.template:
+    src: 90-k8s-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/90-k8s-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload SSH
+
+- name: Deploy kernel hardening
+  ansible.builtin.template:
+    src: 60-hardening.conf.j2
+    dest: /etc/sysctl.d/60-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sysctl

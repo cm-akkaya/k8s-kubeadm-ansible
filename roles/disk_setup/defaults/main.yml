@@ -1,0 +1,26 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/disk_setup
+#
+# GÜVENLİK: disk_setup_confirm varsayılan olarak false'tur. Bu değer true
+# olmadığı sürece rol hiçbir değişiklik (growpart/pvresize/lvextend/resize2fs/
+# mkfs/mount) yapmaz; yalnızca mevcut durumu raporlar.
+#
+# Kullanım:
+#   # 1) Sadece rapor (hiçbir şey değişmez)
+#   ansible-playbook playbooks/site.yml --tags disk_setup --limit <node>
+#
+#   # 2) Raporu görüp onayladıktan sonra gerçek uygulama
+#   ansible-playbook playbooks/site.yml --tags disk_setup --limit <node> \
+#     -e disk_setup_confirm=true
+
+disk_setup_confirm: false
+
+# --- İkinci veri diski (Longhorn) ---
+data_disk_device: "/dev/sdb"
+data_disk_mount: "/mnt/data01"
+data_disk_fstype: "ext4"
+data_disk_mount_opts: "defaults,noatime"
+data_disk_owner: "root"
+data_disk_group: "root"
+data_disk_mode: "0755"

@@ -1,0 +1,276 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/disk_setup
+#
+# İki bağımsız bölüm:
+#   A) Root LVM'i, altındaki disk/partition'ın tamamını kullanacak şekilde büyütür.
+#   B) İkinci veri diskini (data_disk_device) formatlar (yalnızca boşsa) ve
+#      data_disk_mount noktasına kalıcı olarak mount eder.
+#
+# Her iki bölüm de önce salt-okunur bir "keşif/rapor" adımı çalıştırır
+# (her zaman çalışır, hiçbir şeyi değiştirmez), ardından gerçek değişiklik
+# task'ları yalnızca disk_setup_confirm=true olduğunda çalışır.
+# Tüm task'lar idempotenttir: zaten istenen durumdaysa "changed" görülmez.
+
+- name: Ensure cloud-guest-utils (growpart) is present
+  ansible.builtin.apt:
+    name: cloud-guest-utils
+    state: present
+  tags: [disk_setup]
+
+# ---------------------------------------------------------------------------
+# A) ROOT LVM GENİŞLETME
+# ---------------------------------------------------------------------------
+
+- name: Identify root filesystem block device
+  ansible.builtin.set_fact:
+    root_device: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}"
+    root_fstype: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='fstype') | first }}"
+  tags: [disk_setup]
+
+- name: Determine whether root is on LVM
+  ansible.builtin.set_fact:
+    root_is_lvm: "{{ ('mapper' in root_device) or ('/dev/dm-' in root_device) }}"
+  tags: [disk_setup]
+
+- name: LVM growth block
+  when: root_is_lvm | bool
+  tags: [disk_setup]
+  block:
+    - name: Get VG name backing the root LV
+      ansible.builtin.command:
+        cmd: "lvs --noheadings -o vg_name {{ root_device }}"
+      register: root_vg_raw
+      changed_when: false
+
+    - name: Get LV name backing the root LV
+      ansible.builtin.command:
+        cmd: "lvs --noheadings -o lv_name {{ root_device }}"
+      register: root_lv_raw
+      changed_when: false
+
+    - name: Get PV(s) backing the root VG
+      ansible.builtin.command:
+        cmd: "pvs --noheadings -o pv_name --select vg_name={{ root_vg_raw.stdout | trim }}"
+      register: root_pv_raw
+      changed_when: false
+
+    - name: Set LVM facts
+      ansible.builtin.set_fact:
+        root_vg: "{{ root_vg_raw.stdout | trim }}"
+        root_lv: "{{ root_lv_raw.stdout | trim }}"
+        root_pv_list: "{{ root_pv_raw.stdout_lines | map('trim') | reject('equalto', '') | list }}"
+
+    - name: Warn and skip if root VG spans multiple PVs (unsupported by this role)
+      ansible.builtin.debug:
+        msg: >-
+          UYARI: {{ root_vg }} birden fazla physical volume üzerinde
+          ({{ root_pv_list }}). Bu rol yalnızca tek-PV senaryosunu otomatik
+          büyütür; bu node'da LVM genişletme adımı atlanıyor, elle
+          değerlendirilmelidir.
+      when: root_pv_list | length != 1
+
+    - name: Single-PV growth
+      when: root_pv_list | length == 1
+      block:
+        - name: Derive parent disk and partition number from PV
+          ansible.builtin.set_fact:
+            root_pv: "{{ root_pv_list[0] }}"
+            root_disk: "{{ root_pv_list[0] | regex_replace('[0-9]+$', '') }}"
+            root_partnum: "{{ root_pv_list[0] | regex_search('[0-9]+$') }}"
+
+        - name: Report - show free space at end of root disk (read-only)
+          ansible.builtin.command:
+            cmd: "parted -s {{ root_disk }} unit MiB print free"
+          register: root_disk_free
+          changed_when: false
+          failed_when: false
+
+        - name: Report - show current VG free extents (read-only)
+          ansible.builtin.command:
+            cmd: "vgs --noheadings --units g -o vg_free {{ root_vg }}"
+          register: root_vg_free
+          changed_when: false
+
+        - name: Report - LVM/root disk durumu
+          ansible.builtin.debug:
+            msg:
+              - "Root device       : {{ root_device }} (fstype: {{ root_fstype }})"
+              - "VG / LV           : {{ root_vg }} / {{ root_lv }}"
+              - "Underlying PV     : {{ root_pv }} (disk: {{ root_disk }}, partition: {{ root_partnum }})"
+              - "VG free space     : {{ root_vg_free.stdout | trim }}"
+              - "Disk free space (parted, son satırlar):"
+              - "{{ root_disk_free.stdout_lines[-5:] }}"
+              - "Uygulamak için     : -e disk_setup_confirm=true"
+
+        - name: APPLY - Grow partition to fill disk
+          ansible.builtin.command:
+            cmd: "growpart {{ root_disk }} {{ root_partnum }}"
+          register: growpart_result
+          changed_when: "'CHANGED' in growpart_result.stdout"
+          failed_when: >-
+            growpart_result.rc != 0 and 'NOCHANGE' not in growpart_result.stdout
+          when: disk_setup_confirm | default(false) | bool
+
+        - name: APPLY - Resize physical volume to fill partition
+          ansible.builtin.command:
+            cmd: "pvresize {{ root_pv }}"
+          register: pvresize_result
+          changed_when: "'success' in pvresize_result.stdout | lower or pvresize_result.rc == 0"
+          when: disk_setup_confirm | default(false) | bool
+
+        - name: APPLY - Extend logical volume to use all free VG space
+          ansible.builtin.command:
+            cmd: "lvextend -l +100%FREE {{ root_device }}"
+          register: lvextend_result
+          changed_when: "'Size of logical volume' in lvextend_result.stdout"
+          failed_when: >-
+            lvextend_result.rc != 0 and
+            ('matches existing size' not in lvextend_result.stdout and
+             'not larger than existing size' not in lvextend_result.stdout)
+          when: disk_setup_confirm | default(false) | bool
+
+        - name: APPLY - Grow ext4 root filesystem
+          ansible.builtin.command:
+            cmd: "resize2fs {{ root_device }}"
+          register: resize2fs_result
+          changed_when: "'Nothing to do' not in resize2fs_result.stdout"
+          when:
+            - disk_setup_confirm | default(false) | bool
+            - root_fstype == 'ext4'
+
+        - name: APPLY - Grow xfs root filesystem
+          ansible.builtin.command:
+            cmd: "xfs_growfs /"
+          register: xfsgrow_result
+          changed_when: true
+          when:
+            - disk_setup_confirm | default(false) | bool
+            - root_fstype == 'xfs'
+
+        - name: APPLY - Show resulting root filesystem size
+          ansible.builtin.command:
+            cmd: "df -h /"
+          register: root_df_after
+          changed_when: false
+          when: disk_setup_confirm | default(false) | bool
+
+        - name: APPLY - Sonuç
+          ansible.builtin.debug:
+            msg: "{{ root_df_after.stdout_lines }}"
+          when: disk_setup_confirm | default(false) | bool
+
+- name: Root LVM değil, büyütme adımı atlanıyor
+  ansible.builtin.debug:
+    msg: "Root filesystem ({{ root_device }}) LVM üzerinde değil, bu bölüm atlanıyor."
+  when: not (root_is_lvm | bool)
+  tags: [disk_setup]
+
+# ---------------------------------------------------------------------------
+# B) İKİNCİ VERİ DİSKİ (Longhorn) — FORMAT + MOUNT
+# ---------------------------------------------------------------------------
+
+- name: Check whether data disk block device exists
+  ansible.builtin.stat:
+    path: "{{ data_disk_device }}"
+  register: data_disk_stat
+  tags: [disk_setup]
+
+- name: Data disk block section
+  when: data_disk_stat.stat.exists
+  tags: [disk_setup]
+  block:
+    - name: Report - detect existing filesystem signature on data disk (read-only)
+      ansible.builtin.command:
+        cmd: "blkid -o value -s TYPE {{ data_disk_device }}"
+      register: data_disk_blkid
+      changed_when: false
+      failed_when: false
+
+    - name: Set data disk facts
+      ansible.builtin.set_fact:
+        data_disk_needs_format: "{{ data_disk_blkid.stdout | trim | length == 0 }}"
+        data_disk_actual_fstype: "{{ (data_disk_blkid.stdout | trim) if (data_disk_blkid.stdout | trim | length > 0) else data_disk_fstype }}"
+
+    - name: Report - mount point current state (read-only)
+      ansible.builtin.command:
+        cmd: "findmnt {{ data_disk_mount }}"
+      register: data_disk_findmnt
+      changed_when: false
+      failed_when: false
+
+    - name: Report - veri diski durumu
+      ansible.builtin.debug:
+        msg:
+          - "Data disk            : {{ data_disk_device }}"
+          - "Mevcut dosya sistemi  : {{ (data_disk_blkid.stdout | trim) if (data_disk_blkid.stdout | trim | length > 0) else 'YOK (formatsız)' }}"
+          - "Format gerekiyor mu   : {{ data_disk_needs_format }}"
+          - "Kullanılacak fstype   : {{ data_disk_actual_fstype }}"
+          - "Mount noktası         : {{ data_disk_mount }}"
+          - "Mevcut mount durumu   : {{ 'MOUNTED: ' + data_disk_findmnt.stdout if data_disk_findmnt.rc == 0 else 'MOUNT EDİLMEMİŞ' }}"
+          - "Uygulamak için        : -e disk_setup_confirm=true"
+
+    - name: SAFETY CHECK - refuse to format a disk that already has a filesystem
+      ansible.builtin.assert:
+        that:
+          - true
+        fail_msg: "Bu satıra hiç girilmemeli - mkfs task'ı zaten 'when' ile korunuyor."
+      when: false  # dokümantasyon amaçlı; gerçek koruma aşağıdaki mkfs task'ının 'when' koşulunda
+
+    - name: APPLY - Format data disk (yalnızca boşsa, ASLA mevcut veri üzerine yazmaz)
+      community.general.filesystem:
+        fstype: "{{ data_disk_fstype }}"
+        dev: "{{ data_disk_device }}"
+      when:
+        - disk_setup_confirm | default(false) | bool
+        - data_disk_needs_format | bool
+
+    - name: APPLY - Re-check UUID/fstype after (potential) format
+      ansible.builtin.command:
+        cmd: "blkid -o value -s TYPE {{ data_disk_device }}"
+      register: data_disk_blkid_post
+      changed_when: false
+      when: disk_setup_confirm | default(false) | bool
+
+    - name: APPLY - Get UUID of data disk
+      ansible.builtin.command:
+        cmd: "blkid -o value -s UUID {{ data_disk_device }}"
+      register: data_disk_uuid_result
+      changed_when: false
+      when: disk_setup_confirm | default(false) | bool
+
+    - name: APPLY - Ensure mount point directory exists
+      ansible.builtin.file:
+        path: "{{ data_disk_mount }}"
+        state: directory
+        owner: "{{ data_disk_owner }}"
+        group: "{{ data_disk_group }}"
+        mode: "{{ data_disk_mode }}"
+      when: disk_setup_confirm | default(false) | bool
+
+    - name: APPLY - Mount data disk persistently via UUID
+      ansible.posix.mount:
+        path: "{{ data_disk_mount }}"
+        src: "UUID={{ data_disk_uuid_result.stdout | trim }}"
+        fstype: "{{ (data_disk_blkid_post.stdout | trim) if (data_disk_blkid_post is defined and data_disk_blkid_post.stdout | trim | length > 0) else data_disk_fstype }}"
+        opts: "{{ data_disk_mount_opts }}"
+        state: mounted
+      when: disk_setup_confirm | default(false) | bool
+
+    - name: APPLY - Show resulting mount
+      ansible.builtin.command:
+        cmd: "findmnt {{ data_disk_mount }}"
+      register: data_disk_findmnt_after
+      changed_when: false
+      when: disk_setup_confirm | default(false) | bool
+
+    - name: APPLY - Sonuç
+      ansible.builtin.debug:
+        msg: "{{ data_disk_findmnt_after.stdout_lines }}"
+      when: disk_setup_confirm | default(false) | bool
+
+- name: Veri diski bulunamadı
+  ansible.builtin.debug:
+    msg: "{{ data_disk_device }} bu node'da bulunamadı, B bölümü atlanıyor."
+  when: not data_disk_stat.stat.exists
+  tags: [disk_setup]

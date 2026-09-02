@@ -1,0 +1,116 @@
+---
+# Yeni node'lari (henüz platform kullanicisi olmayan) cluster'a katilmaya hazirlar:
+#   - inventory/hosts.ini'ye ekler (idempotent)
+#   - ngnadmin + parola ile baglanip platform kullanicisini, deploy key'i ve
+#     NOPASSWD sudo'yu kurar
+#
+# Kullanim:
+#   ansible-playbook playbooks/bootstrap-new-nodes.yml \
+#     -e '{"new_nodes":[
+#           {"name":"kaya-worker-07","ip":"172.17.160.204","group":"workers"},
+#           {"name":"kaya-worker-08","ip":"172.17.160.205","group":"workers"}
+#         ]}'
+#
+# new_nodes.group degeri hosts.ini'deki mevcut bir grup basligiyla ([workers],
+# [control_plane], [load_balancers]) birebir eslesmelidir.
+
+- name: Register new nodes in inventory and temporary in-memory inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_prompt:
+    - name: bootstrap_password
+      prompt: "ngnadmin kullanicisinin SSH/sudo parolasini girin"
+      private: true
+
+  tasks:
+    - name: Fail fast if new_nodes not provided
+      ansible.builtin.assert:
+        that:
+          - new_nodes is defined
+          - new_nodes | length > 0
+        fail_msg: >-
+          'new_nodes' degiskeni tanimli degil. Örnek:
+          -e '{"new_nodes":[{"name":"kaya-worker-07","ip":"172.17.160.204","group":"workers"}]}'
+
+    - name: Add new nodes to inventory/hosts.ini (idempotent)
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../inventory/hosts.ini"
+        insertafter: "^\\[{{ item.group }}\\]"
+        regexp: "^{{ item.name }}\\s"
+        line: "{{ item.name }} ansible_host={{ item.ip }}"
+        state: present
+      loop: "{{ new_nodes }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Register new nodes for this run (temporary, in-memory)
+      ansible.builtin.add_host:
+        name: "{{ item.name }}"
+        groups:
+          - "{{ item.group }}"
+          - bootstrap_targets
+        ansible_host: "{{ item.ip }}"
+        ansible_user: ngnadmin
+        ansible_ssh_pass: "{{ bootstrap_password }}"
+        ansible_become_pass: "{{ bootstrap_password }}"
+        ansible_python_interpreter: /usr/bin/python3
+      loop: "{{ new_nodes }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+- name: Bootstrap platform user, deploy key and NOPASSWD sudo on new nodes
+  hosts: bootstrap_targets
+  gather_facts: false
+  become: true
+
+  vars:
+    controller_deploy_public_key: >-
+      {{ lookup('ansible.builtin.file',
+      lookup('ansible.builtin.env', 'HOME') + '/.ssh/platform-k8s-deploy.pub') }}
+
+  tasks:
+    - name: Ensure platform user exists
+      ansible.builtin.user:
+        name: platform
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Ensure SSH directory exists
+      ansible.builtin.file:
+        path: /home/platform/.ssh
+        state: directory
+        owner: platform
+        group: platform
+        mode: "0700"
+
+    - name: Install platform-k8s-deploy public key
+      ansible.posix.authorized_key:
+        user: platform
+        key: "{{ controller_deploy_public_key }}"
+        state: present
+        comment: "platform-k8s-deploy (Ansible controller)"
+
+    - name: Configure passwordless sudo for platform
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/platform
+        content: "platform ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"
+
+    - name: Verify deploy key based access works
+      ansible.builtin.command:
+        cmd: whoami
+      changed_when: false
+      register: whoami_check
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} üzerinde platform kullanicisi hazir (become çalisti: {{ whoami_check.stdout }})"

@@ -24,7 +24,8 @@
   gather_facts: true
   roles:
     - common
-    - os_hardening
+    - role: os_hardening
+      tags: [os_hardening]
 
 - name: Prepare Kubernetes nodes
   hosts: kubernetes
@@ -33,6 +34,13 @@
     - k8s_prerequisites
     - containerd
     - kubernetes_packages
+
+- name: Prepare node disks (LVM growth + Longhorn data disk)
+  hosts: kubernetes
+  gather_facts: true
+  tags: [disk_setup]
+  roles:
+    - disk_setup
 
 - name: Configure API load balancers
   hosts: load_balancers

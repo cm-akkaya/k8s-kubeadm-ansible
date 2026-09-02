@@ -6,28 +6,69 @@
       - apparmor
       - apparmor-utils
       - chrony
+      - fail2ban
     state: present
-    update_cache: true
+    update_cache: false
 
-- name: Enable auditd
+- name: Ensure auditd is enabled and running
   ansible.builtin.service:
     name: auditd
     state: started
     enabled: true
 
-- name: Enable chrony
+- name: Ensure chrony is enabled and running
   ansible.builtin.service:
     name: chrony
     state: started
     enabled: true
 
+- name: Ensure fail2ban is enabled and running
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: true
+
+- name: Disable active swap
+  ansible.builtin.command:
+    cmd: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Remove active swap entries from fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*)(?!#)(\S+\s+\S+\s+swap\s+\S+.*)$'
+    replace: '# disabled by os_hardening: \2'
+
+- name: Find swap image files
+  ansible.builtin.find:
+    paths: /
+    patterns:
+      - 'swap*.img'
+    file_type: file
+    recurse: false
+  register: swap_image_files
+
+- name: Remove swap image files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ swap_image_files.files }}"
+  when: swap_image_files.matched | int > 0
+
 - name: Deploy SSH hardening
   ansible.builtin.template:
-    src: 90-k8s-hardening.conf.j2
-    dest: /etc/ssh/sshd_config.d/90-k8s-hardening.conf
+    src: 00-k8s-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-k8s-hardening.conf
     owner: root
     group: root
     mode: "0644"
+  notify: Reload SSH      
+
+- name: Remove stale SSH hardening file with old precedence-losing name
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/90-k8s-hardening.conf
+    state: absent
   notify: Reload SSH
 
 - name: Deploy kernel hardening
