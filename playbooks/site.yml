@@ -81,7 +81,9 @@
   hosts: workers
   gather_facts: true
   roles:
-    - worker_join
+    - role: worker_join
+      tags:
+        - worker_join
 
 - name: Validate completed cluster
   hosts: control_plane

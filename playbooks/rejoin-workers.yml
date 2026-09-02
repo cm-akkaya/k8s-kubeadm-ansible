@@ -1,0 +1,34 @@
+---
+- name: Generate worker join information
+  hosts: kaya-master-01
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Generate fresh worker join token
+      ansible.builtin.command:
+        cmd: kubeadm token create
+      register: worker_join_token
+      changed_when: true
+      no_log: true
+
+    - name: Calculate Kubernetes CA certificate hash
+      ansible.builtin.shell:
+        cmd: |
+          openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt \
+          | openssl rsa -pubin -outform der 2>/dev/null \
+          | openssl dgst -sha256 -hex \
+          | awk '{print $2}'
+      register: worker_ca_hash
+      changed_when: false
+
+    - name: Store join information as facts
+      ansible.builtin.set_fact:
+        kubeadm_join_token: "{{ worker_join_token.stdout }}"
+        kubeadm_ca_cert_hash: "sha256:{{ worker_ca_hash.stdout }}"
+
+- name: Rejoin worker nodes
+  hosts: kaya-worker-07,kaya-worker-08
+  become: true
+  gather_facts: true
+  roles:
+    - worker_join
